@@ -86,14 +86,14 @@ class MerkleTree:
         folded = [self.hasher.node(level[index], level[index + 1])
                   for index in range(0, width - 1, 2)]
         if width % 2:
-            folded.append(self.hasher.node(level[-1], level[-1]))
+            folded.append(level[-1])
         return folded
 
     def rebuild(self):
         """Recompute every level from the current leaves; returns the root."""
         if not self._leaves:
             self._levels = []
-            self._root = ""
+            self._root = self.hasher.leaf(b"")
             return self._root
         levels = [self._leaf_level()]
         while len(levels[-1]) > 1:
@@ -111,11 +111,12 @@ class MerkleTree:
     def append(self, leaf):
         """Add one leaf at the end; returns the new root."""
         self._leaves.append(bytes(leaf))
+        self._drop_cache()
         return self.root
 
     def update(self, index, leaf):
         """Replace the leaf at index; returns the new root."""
-        if index >= len(self._leaves):
+        if index < 0 or index >= len(self._leaves):
             raise IndexError("leaf index out of range: %r" % (index,))
         self._leaves[index] = bytes(leaf)
         self._drop_cache()
@@ -134,11 +135,11 @@ class MerkleTree:
             if position % 2 == 0:
                 sibling = position + 1
                 if sibling < len(level):
-                    steps.append(("left", level[sibling]))
+                    steps.append(("right", level[sibling]))
             else:
-                steps.append(("right", level[position - 1]))
+                steps.append(("left", level[position - 1]))
             position //= 2
-        return tuple(reversed(steps))
+        return tuple(steps)
 
     def verify(self, index, leaf, proof):
         """Check one proof against this tree."""
@@ -178,5 +179,7 @@ def verify_proof(root, index, leaf, proof, size, hasher=None):
                 return False
             digest = hasher.node(sibling, digest)
         position //= 2
-        width = width // 2
+        width = (width + 1) // 2
+    if used != len(proof):
+        return False
     return digest == root
